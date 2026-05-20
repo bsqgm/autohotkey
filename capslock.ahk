@@ -251,6 +251,53 @@ GetVSDevenvPath() {
     return FileExist(devenv) ? devenv : ""
 }
 
+; --- 通过 OneCommander 打开指定目录 ---
+OpenFolder(folderPath) {
+    if !DirExist(folderPath) {
+        MsgBox "目录不存在：`n" folderPath
+        return
+    }
+
+    ocExe := GetOneCommanderExe()
+    q := Chr(34)
+
+    ; 方案 A：直接打开到指定目录
+    ; Run q . ocExe . q . " " . q . folderPath . q
+
+    ; 方案 B：在 OneCommander 新标签页打开指定目录
+    try {
+        Run q . ocExe . q . " -o " . q . folderPath . q . " -newtab"
+    } catch Error as e {
+        MsgBox "无法启动 OneCommander。`n`n请检查 OneCommander.exe 路径是否正确。`n`n当前尝试路径：`n" ocExe
+    }
+}
+
+; --- 自动寻找 OneCommander.exe ---
+GetOneCommanderExe() {
+    ; 如果 OneCommander 已经在运行，优先使用它的真实 exe 路径
+    try {
+        path := WinGetProcessPath("ahk_exe OneCommander.exe")
+        if (path != "" && FileExist(path))
+            return path
+    }
+
+    ; 常见安装位置
+    candidates := [
+        EnvGet("LOCALAPPDATA") "\Programs\OneCommander\OneCommander.exe",
+        EnvGet("LOCALAPPDATA") "\Microsoft\WindowsApps\OneCommander.exe",
+        EnvGet("ProgramFiles") "\OneCommander\OneCommander.exe",
+        EnvGet("ProgramFiles(x86)") "\OneCommander\OneCommander.exe"
+    ]
+
+    for path in candidates {
+        if (path != "" && FileExist(path))
+            return path
+    }
+
+    ; 最后兜底：如果 OneCommander.exe 已经在 PATH / App Execution Alias 里，这个也可能成功
+    return "OneCommander.exe"
+}
+
 ; --- 热键绑定（exeName 用于匹配窗口，appName 用于启动）---
 CapsLock & f:: ToggleApp("OneCommander.exe",      "OneCommander")
 CapsLock & a:: ToggleApp("tabby.exe",             "Tabby Terminal")
@@ -262,6 +309,7 @@ CapsLock & w:: ToggleApp("Notion.exe",            "Notion")
 CapsLock & c:: ToggleApp("codex.exe",             "Codex")
 CapsLock & v:: ToggleVS()
 CapsLock & b:: MoveActiveWindowToNextMonitor()
+CapsLock & 1:: OpenFolder("d:\Downloads")
 
 CapsLock & F12:: {
     global AppIDCache
