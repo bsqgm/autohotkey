@@ -60,6 +60,82 @@ AlignWindowToMouse(hwnd) {
     }
 }
 
+; --- 将当前焦点窗口移动到另一个屏幕 ---
+MoveActiveWindowToNextMonitor() {
+    hwnd := WinExist("A")
+    if !hwnd
+        return
+
+    ; 避免误操作桌面、任务栏等特殊窗口
+    try {
+        cls := WinGetClass("ahk_id " hwnd)
+        if (cls = "Progman" || cls = "WorkerW" || cls = "Shell_TrayWnd")
+            return
+    }
+
+    monitorCount := MonitorGetCount()
+    if (monitorCount < 2)
+        return
+
+    winState := WinGetMinMax("ahk_id " hwnd)
+    wasMaximized := (winState = 1)
+
+    ; 最大化窗口需要先还原，否则 WinMove 可能无效或位置不准确
+    if (winState != 0) {
+        WinRestore("ahk_id " hwnd)
+        Sleep 80
+    }
+
+    WinGetPos(&x, &y, &w, &h, "ahk_id " hwnd)
+
+    currentMonitor := GetMonitorIndexFromWindowRect(x, y, w, h)
+    targetMonitor := (currentMonitor = monitorCount) ? 1 : currentMonitor + 1
+
+    MonitorGetWorkArea(targetMonitor, &waLeft, &waTop, &waRight, &waBottom)
+
+    waWidth := waRight - waLeft
+    waHeight := waBottom - waTop
+
+    ; 如果窗口比目标屏幕工作区大，就缩小到工作区大小
+    newW := Min(w, waWidth)
+    newH := Min(h, waHeight)
+
+    ; 移动到目标屏幕并居中
+    targetX := waLeft + (waWidth - newW) // 2
+    targetY := waTop + (waHeight - newH) // 2
+
+    WinMove(targetX, targetY, newW, newH, "ahk_id " hwnd)
+
+    ; 如果原本是最大化状态，移动后重新最大化
+    if wasMaximized
+        WinMaximize("ahk_id " hwnd)
+
+    WinActivate("ahk_id " hwnd)
+}
+
+; --- 根据窗口矩形判断它当前主要位于哪个屏幕 ---
+GetMonitorIndexFromWindowRect(x, y, w, h) {
+    monitorCount := MonitorGetCount()
+
+    bestMonitor := 1
+    bestArea := -1
+
+    Loop monitorCount {
+        MonitorGet(A_Index, &mLeft, &mTop, &mRight, &mBottom)
+
+        overlapW := Max(0, Min(x + w, mRight) - Max(x, mLeft))
+        overlapH := Max(0, Min(y + h, mBottom) - Max(y, mTop))
+        overlapArea := overlapW * overlapH
+
+        if (overlapArea > bestArea) {
+            bestArea := overlapArea
+            bestMonitor := A_Index
+        }
+    }
+
+    return bestMonitor
+}
+
 ; --- 统一切换函数 ---
 ToggleApp(exeName, appName := "") {
     global AppIDCache
@@ -89,6 +165,8 @@ CapsLock & a:: ToggleApp("tabby.exe",             "Tabby Terminal")
 CapsLock & e:: ToggleApp("notepad++.exe",         "Notepad++")
 CapsLock & s:: ToggleApp("chrome.exe",            "Google Chrome")
 CapsLock & x:: ToggleApp("Cherry Studio.exe",     "Cherry Studio")
-CapsLock & g:: ToggleApp("clash-verge.exe",       "Clash Verge")
+CapsLock & g:: ToggleApp("clash party.exe",       "Clash Party")
 CapsLock & w:: ToggleApp("Notion.exe",            "Notion")
-CapsLock & c:: ToggleApp("devenv.exe",            "Visual Studio 2022")
+CapsLock & c:: ToggleApp("codex.exe",             "Codex")
+CapsLock & v:: ToggleApp("devenv.exe")
+CapsLock & b:: MoveActiveWindowToNextMonitor()
