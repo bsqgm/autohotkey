@@ -1,6 +1,11 @@
 #Requires AutoHotkey v2.0
 SetCapsLockState "AlwaysOff"
 
+if !A_IsAdmin {
+    try Run '*RunAs "' A_AhkPath '" "' A_ScriptFullPath '"'
+    ExitApp
+}
+
 ; --- 全局配置 ---
 AppIDCache := Map()
 
@@ -159,6 +164,93 @@ ToggleApp(exeName, appName := "") {
     }
 }
 
+; --- 专门切换 / 启动 Visual Studio ---
+ToggleVS() {
+    global AppIDCache
+
+    ; 1. 如果 VS 已经打开，移动到鼠标所在屏幕并激活
+    if (hwnd := FindMainWindowByExe("devenv.exe")) {
+        AlignWindowToMouse(hwnd)
+        return
+    }
+
+    ; 2. 优先通过 StartApps 启动
+    vsNames := ["Visual Studio 2022", "Visual Studio 2022 Preview", "Visual Studio 2019"]
+
+    for _, name in vsNames {
+        if AppIDCache.Has(name) {
+            Run "explorer.exe shell:AppsFolder\" . AppIDCache[name]
+            return
+        }
+    }
+
+    ; 3. 再通过 vswhere.exe 找 devenv.exe
+    if (devenv := GetVSDevenvPath()) {
+        q := Chr(34)
+        Run q devenv q
+        return
+    }
+
+    MsgBox "没有找到 Visual Studio。请确认 StartApps 里的名称，或者手动填 devenv.exe 的完整路径。"
+}
+
+; --- 找指定 exe 的可见主窗口 ---
+FindMainWindowByExe(exeName) {
+    for hwnd in WinGetList("ahk_exe " exeName) {
+        try {
+            title := WinGetTitle("ahk_id " hwnd)
+            style := WinGetStyle("ahk_id " hwnd)
+            exStyle := WinGetExStyle("ahk_id " hwnd)
+        } catch {
+            continue
+        }
+
+        ; 跳过无标题窗口
+        if (title = "")
+            continue
+
+        ; WS_VISIBLE = 0x10000000
+        if !((style & 0x10000000))
+            continue
+
+        ; WS_EX_TOOLWINDOW = 0x80，跳过工具窗口
+        if (exStyle & 0x80)
+            continue
+
+        return hwnd
+    }
+
+    return 0
+}
+
+; --- 用 vswhere.exe 自动寻找 Visual Studio 的 devenv.exe ---
+GetVSDevenvPath() {
+    pf86 := EnvGet("ProgramFiles(x86)")
+    if (pf86 = "")
+        pf86 := EnvGet("ProgramFiles")
+
+    vswhere := pf86 "\Microsoft Visual Studio\Installer\vswhere.exe"
+    if !FileExist(vswhere)
+        return ""
+
+    q := Chr(34)
+
+    try {
+        shell := ComObject("WScript.Shell")
+        cmd := q vswhere q " -latest -products * -requires Microsoft.VisualStudio.Component.CoreEditor -property installationPath"
+        exec := shell.Exec(cmd)
+        installPath := Trim(exec.StdOut.ReadAll())
+    } catch {
+        return ""
+    }
+
+    if (installPath = "")
+        return ""
+
+    devenv := installPath "\Common7\IDE\devenv.exe"
+    return FileExist(devenv) ? devenv : ""
+}
+
 ; --- 热键绑定（exeName 用于匹配窗口，appName 用于启动）---
 CapsLock & f:: ToggleApp("OneCommander.exe",      "OneCommander")
 CapsLock & a:: ToggleApp("tabby.exe",             "Tabby Terminal")
@@ -168,5 +260,17 @@ CapsLock & x:: ToggleApp("Cherry Studio.exe",     "Cherry Studio")
 CapsLock & g:: ToggleApp("clash party.exe",       "Clash Party")
 CapsLock & w:: ToggleApp("Notion.exe",            "Notion")
 CapsLock & c:: ToggleApp("codex.exe",             "Codex")
-CapsLock & v:: ToggleApp("devenv.exe")
+CapsLock & v:: ToggleVS()
 CapsLock & b:: MoveActiveWindowToNextMonitor()
+
+CapsLock & F12:: {
+    global AppIDCache
+
+    text := ""
+    for name, appid in AppIDCache {
+        if InStr(name, "Visual Studio")
+            text .= name " | " appid "`n"
+    }
+
+    MsgBox text = "" ? "AppIDCache 里没找到 Visual Studio" : text
+}
